@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
   runApp(const CavacoApp());
@@ -24,103 +25,99 @@ class CavacoApp extends StatelessWidget {
   }
 }
 
+// Modelo de Música
 class Song {
   final String title;
   final String artist;
-  final String lyricsSnippet;
-  final String content;
+  final String url;
+  final String source; // "Cifra Club", "Banana Cifras" ou "MVHP Portal"
+  String content;
 
   Song({
     required this.title,
     required this.artist,
-    required this.lyricsSnippet,
+    required this.url,
+    required this.source,
     required this.content,
   });
+
+  Map<String, dynamic> toMap() => {
+        'title': title,
+        'artist': artist,
+        'url': url,
+        'source': source,
+        'content': content,
+      };
+
+  factory Song.fromMap(Map<String, dynamic> map) => Song(
+        title: map['title'] ?? '',
+        artist: map['artist'] ?? '',
+        url: map['url'] ?? '',
+        source: map['source'] ?? 'Cifra',
+        content: map['content'] ?? '',
+      );
 }
 
-// Acordes de Cavaquinho (Ré, Sol, Si, Ré)
+// Biblioteca de Acordes do Cavaquinho (Ré - Sol - Si - Ré)
 final Map<String, List<int>> cavacoChords = {
+  // Dó
   "C": [2, 0, 1, 2],
   "C7": [2, 3, 1, 2],
   "C7M": [2, 0, 0, 2],
+  "C6": [2, 2, 1, 2],
+  "Cm": [1, 0, 1, 1],
+  "Cm7": [1, 3, 1, 1],
+  // Ré
   "D": [0, 2, 3, 4],
   "D7": [0, 2, 1, 0],
+  "D7M": [0, 2, 2, 0],
+  "D6": [0, 2, 0, 0],
   "Dm": [3, 2, 3, 0],
+  "Dm7": [3, 2, 1, 0],
+  // Mi
   "E": [2, 1, 0, 2],
   "E7": [2, 1, 0, 0],
+  "E7M": [2, 1, 0, 1],
   "Em": [2, 0, 0, 2],
+  "Em7": [0, 0, 0, 2],
+  // Fá
   "F": [3, 2, 1, 3],
+  "F7": [3, 2, 4, 3],
+  "F7M": [3, 2, 1, 2],
+  "Fm": [3, 1, 1, 3],
+  "F#": [4, 3, 2, 4],
+  "F#7": [4, 3, 2, 2],
   "F#m": [4, 2, 2, 4],
+  "F#m7": [4, 2, 2, 2],
+  // Sol
   "G": [0, 0, 0, 0],
   "G7": [0, 0, 0, 3],
+  "G7M": [0, 0, 0, 4],
+  "G6": [0, 0, 0, 2],
+  "Gm": [0, 3, 3, 0],
+  "Gm7": [0, 0, 3, 3],
+  "G#": [1, 1, 1, 1],
+  "G#7": [1, 1, 1, 4],
+  "G#m": [1, 4, 4, 1],
+  // Lá
   "A": [2, 2, 2, 2],
   "A7": [2, 0, 2, 2],
+  "A7M": [2, 1, 2, 2],
+  "A6": [2, 2, 2, 4],
   "Am": [2, 2, 1, 2],
+  "Am7": [2, 0, 1, 2],
+  "Bb": [3, 3, 3, 3],
+  "Bb7": [3, 1, 3, 3],
+  "Bbm": [3, 3, 2, 3],
+  // Si
+  "B": [4, 4, 4, 4],
   "B7": [1, 2, 0, 1],
+  "B7M": [4, 3, 4, 4],
   "Bm": [4, 4, 3, 4],
+  "Bm7": [4, 2, 3, 4],
+  "Eb": [1, 3, 4, 1],
+  "Eb7": [1, 3, 2, 1],
 };
-
-// Base offline inicial
-final List<Song> localSongs = [
-  Song(
-    title: "Deixa a Vida Me Levar",
-    artist: "Zeca Pagodinho",
-    lyricsSnippet: "Deixa a vida me levar, vida leva eu...",
-    content: """
-[C] Deixa a vida me [G7]levar
-Vida leva [C]eu
-Deixa a vida me [G7]levar
-Vida leva [C]eu
-Sou feliz e agra[G7]deço
-Por tudo que Deus me [C]deu
-
-[C] Posso me confor[G7]mar com a pouca mobí[C]lia
-[A7] Uma casa na [Dm]roça e uma fa[G7]mília
-Mas se eu tiver que lu[C]tar, vou com fé pra ven[G7]cer
-Deus me deu essa [C]vida pra eu poder vi[G7]ver
-""",
-  ),
-  Song(
-    title: "O Show Tem Que Continuar",
-    artist: "Fundo de Quintal",
-    lyricsSnippet: "O teu choro já não toca meu coração...",
-    content: """
-[C] [Em] [F] [G7]
-[C] O teu choro já não [Em]toca meu coração
-[F] Foi você quem quis assim, [G7]desfez da união
-[C] Agora vem pedir per[Em]dão
-[F] Nosso amor foi pro es[G7]paço
-[Am] Não tem mais jeito, [Em]meu coração
-[F] Encontrou outro [G7]abraço
-""",
-  ),
-  Song(
-    title: "Trem das Onze",
-    artist: "Adoniran Barbosa",
-    lyricsSnippet: "Não posso ficar nem mais um minuto com você...",
-    content: """
-[Am] Não posso ficar nem mais um mi[E7]nuto com você
-Sinto muito [Am]amor, mas não pode [A7]ser
-[Dm] Moro em Jaça[Am]nã
-Se eu perder esse [E7]trem, que sai agora às onze [Am]horas
-Só amanhã de ma[E7]nhã...
-""",
-  ),
-  Song(
-    title: "Não Deixe o Samba Morrer",
-    artist: "Alcione",
-    lyricsSnippet: "Não deixe o samba morrer, não deixe o samba acabar...",
-    content: """
-[Em] Não deixe o samba [B7]morrer
-Não deixe o samba aca[Em]bar
-O morro foi feito de [E7]samba
-De samba pra gente sam[Am]bar
-Quando eu não puder mais pi[Em]sar na avenida
-Quando as minhas pernas não mais [B7]aguentar
-Levar meu corpo [Em]junto com meu samba...
-""",
-  ),
-];
 
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
@@ -129,85 +126,155 @@ class HomePage extends StatefulWidget {
   State<HomePage> createState() => _HomePageState();
 }
 
-class _HomePageState extends State<HomePage> {
+class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin {
   final TextEditingController _searchController = TextEditingController();
+  late TabController _tabController;
+
   List<Song> _searchResults = [];
+  List<Song> _recentSongs = [];
+  List<Song> _favoriteSongs = [];
+
   bool _isLoading = false;
-  String _message = "";
+  String _statusMessage = "";
 
   @override
   void initState() {
     super.initState();
-    _searchResults = localSongs;
+    _tabController = TabController(length: 2, vsync: this);
+    _loadStoredData();
   }
 
-  // Busca na web caso não ache na lista interna
-  Future<void> _performSearch(String query) async {
-    if (query.trim().isEmpty) {
-      setState(() {
-        _searchResults = localSongs;
-        _message = "";
-      });
-      return;
-    }
-
-    // Primeiro filtra localmente
-    final localMatches = localSongs.where((song) {
-      final q = query.toLowerCase();
-      return song.title.toLowerCase().contains(q) ||
-          song.artist.toLowerCase().contains(q) ||
-          song.lyricsSnippet.toLowerCase().contains(q);
-    }).toList();
+  Future<void> _loadStoredData() async {
+    final prefs = await SharedPreferences.getInstance();
+    final recentsJson = prefs.getStringList('recent_songs') ?? [];
+    final favsJson = prefs.getStringList('favorite_songs') ?? [];
 
     setState(() {
-      _searchResults = localMatches;
+      _recentSongs = recentsJson.map((e) => Song.fromMap(jsonDecode(e))).toList();
+      _favoriteSongs = favsJson.map((e) => Song.fromMap(jsonDecode(e))).toList();
+    });
+  }
+
+  Future<void> _addToRecents(Song song) async {
+    final prefs = await SharedPreferences.getInstance();
+    _recentSongs.removeWhere((s) => s.title == song.title && s.artist == song.artist);
+    _recentSongs.insert(0, song);
+
+    if (_recentSongs.length > 10) {
+      _recentSongs = _recentSongs.sublist(0, 10);
+    }
+
+    final list = _recentSongs.map((s) => jsonEncode(s.toMap())).toList();
+    await prefs.setStringList('recent_songs', list);
+    setState(() {});
+  }
+
+  Future<void> _toggleFavorite(Song song) async {
+    final prefs = await SharedPreferences.getInstance();
+    final exists = _favoriteSongs.any((s) => s.title == song.title && s.artist == song.artist);
+
+    setState(() {
+      if (exists) {
+        _favoriteSongs.removeWhere((s) => s.title == song.title && s.artist == song.artist);
+      } else {
+        _favoriteSongs.insert(0, song);
+      }
+    });
+
+    final list = _favoriteSongs.map((s) => jsonEncode(s.toMap())).toList();
+    await prefs.setStringList('favorite_songs', list);
+  }
+
+  bool _isFavorite(Song song) {
+    return _favoriteSongs.any((s) => s.title == song.title && s.artist == song.artist);
+  }
+
+  // Busca conjunta: Cifra Club, Banana Cifras e MVHP Portal de Cifras
+  Future<void> _searchOnline(String query) async {
+    if (query.trim().isEmpty) return;
+
+    setState(() {
       _isLoading = true;
-      _message = "Buscando online...";
+      _statusMessage = "Buscando no Cifra Club, Banana Cifras e MVHP...";
+      _searchResults.clear();
     });
 
     try {
-      // Consulta API pública de busca de letras
-      final response = await http.get(
-        Uri.parse("https://api.lyrics.ovh/suggest/${Uri.encodeComponent(query)}"),
-      ).timeout(const Duration(seconds: 8));
+      final searchUri = Uri.parse(
+        "https://html.duckduckgo.com/html/?q=site%3Acifraclub.com.br+OR+site%3Abananacifras.com+OR+site%3Amvhp.com.br+${Uri.encodeComponent(query)}",
+      );
 
-      if (response.statusCode == 200) {
-        final data = json.decode(response.body);
-        final List items = data['data'] ?? [];
+      final res = await http.get(searchUri, headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36',
+      }).timeout(const Duration(seconds: 12));
 
-        final List<Song> onlineSongs = items.take(10).map((item) {
-          final title = item['title'] ?? 'Sem título';
-          final artist = item['artist']?['name'] ?? 'Artista desconhecido';
-          return Song(
-            title: title,
-            artist: artist,
-            lyricsSnippet: "Clique para carregar a letra e acordes",
-            content: "[Carregando letra online...]",
-          );
-        }).toList();
+      if (res.statusCode == 200) {
+        final body = res.body;
+        final regex = RegExp(r'<a[^>]+class="result__a"[^>]+href="([^"]+)"[^>]*>(.*?)<\/a>');
+        final matches = regex.allMatches(body);
+
+        final List<Song> found = [];
+        for (final m in matches) {
+          final rawHref = m.group(1) ?? '';
+          final rawTitle = m.group(2) ?? '';
+
+          String url = rawHref;
+          if (rawHref.contains('uddg=')) {
+            final part = rawHref.split('uddg=').last.split('&').first;
+            url = Uri.decodeComponent(part);
+          }
+
+          String source = "";
+          if (url.contains('cifraclub.com.br') && !url.contains('/blog/')) {
+            source = "Cifra Club";
+          } else if (url.contains('bananacifras.com')) {
+            source = "Banana Cifras";
+          } else if (url.contains('mvhp.com.br')) {
+            source = "MVHP Portal";
+          }
+
+          if (source.isNotEmpty) {
+            String cleanTitle = rawTitle
+                .replaceAll(RegExp(r'<[^>]*>'), '')
+                .replaceAll('- Cifra Club', '')
+                .replaceAll('- Banana Cifras', '')
+                .replaceAll('- MVHP', '')
+                .replaceAll('MV Portal de Cifras', '')
+                .trim();
+
+            final parts = cleanTitle.split('-');
+            final songName = parts[0].trim();
+            final artistName = parts.length > 1 ? parts[1].trim() : source;
+
+            found.add(Song(
+              title: songName,
+              artist: artistName,
+              url: url,
+              source: source,
+              content: '',
+            ));
+          }
+        }
 
         setState(() {
-          // Junta locais com os da internet
-          _searchResults = [...localMatches, ...onlineSongs];
-          _message = _searchResults.isEmpty ? "Nenhuma música encontrada." : "";
+          _searchResults = found;
+          _statusMessage = _searchResults.isEmpty ? "Nenhuma cifra encontrada para essa busca." : "";
         });
+      } else {
+        setState(() => _statusMessage = "Erro ao conectar aos portais.");
       }
     } catch (e) {
-      // Se estiver sem internet, foca no que já tem
-      setState(() {
-        if (_searchResults.isEmpty) {
-          _message = "Sem conexão ou música não encontrada.";
-        }
-      });
+      setState(() => _statusMessage = "Falha de conexão. Verifique sua internet.");
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
-  // Se o usuário clicar em uma música que veio da internet, busca o texto da letra
+  // Baixa e extrai a cifra de acordo com o portal
   Future<void> _openSong(Song song) async {
-    if (!song.content.contains("[Carregando letra online...]")) {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => SongViewerPage(song: song)));
+    if (song.content.isNotEmpty) {
+      _addToRecents(song);
+      _navigateToViewer(song);
       return;
     }
 
@@ -218,34 +285,99 @@ class _HomePageState extends State<HomePage> {
     );
 
     try {
-      final res = await http.get(
-        Uri.parse("https://api.lyrics.ovh/v1/${Uri.encodeComponent(song.artist)}/${Uri.encodeComponent(song.title)}"),
-      ).timeout(const Duration(seconds: 8));
+      final res = await http.get(Uri.parse(song.url), headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36',
+      }).timeout(const Duration(seconds: 12));
 
-      Navigator.pop(context); // fecha dialog
-
-      String lyrics = "Letra não disponível para esta música.";
-      if (res.statusCode == 200) {
-        final data = json.decode(res.body);
-        lyrics = data['lyrics'] ?? lyrics;
-        
-        // Sugere acordes padrão de samba na música (C, G7, Am, F)
-        lyrics = "[C] " + lyrics.replaceAll("\n\n", "\n[G7] ").replaceAll("\n", "\n[C] ");
-      }
-
-      final completeSong = Song(
-        title: song.title,
-        artist: song.artist,
-        lyricsSnippet: song.lyricsSnippet,
-        content: lyrics,
-      );
-
-      Navigator.push(context, MaterialPageRoute(builder: (_) => SongViewerPage(song: completeSong)));
-    } catch (e) {
       Navigator.pop(context);
+
+      if (res.statusCode == 200) {
+        String parsedCifra = "";
+
+        // 1. Extração Cifra Club
+        if (song.url.contains('cifraclub.com.br')) {
+          final preMatch = RegExp(r'<pre[^>]*>([\s\S]*?)<\/pre>').firstMatch(res.body);
+          if (preMatch != null) {
+            String raw = preMatch.group(1)!;
+            raw = raw.replaceAllMapped(RegExp(r'<b>(.*?)<\/b>'), (m) => '[${m.group(1)}]');
+            parsedCifra = _cleanHtml(raw);
+          }
+        }
+        // 2. Extração Banana Cifras
+        else if (song.url.contains('bananacifras.com')) {
+          final match = RegExp(r'<pre[^>]*>([\s\S]*?)<\/pre>|<div[^>]+class="[^"]*(?:cifra|chords)[^"]*"[^>]*>([\s\S]*?)<\/div>')
+              .firstMatch(res.body);
+          String raw = match != null ? (match.group(1) ?? match.group(2) ?? '') : res.body;
+          raw = raw.replaceAllMapped(RegExp(r'<span[^>]*class="[^"]*chord[^"]*"[^>]*>(.*?)<\/span>|<b>(.*?)<\/b>'),
+              (m) => '[${m.group(1) ?? m.group(2)}]');
+          parsedCifra = _cleanHtml(raw);
+        }
+        // 3. Extração MVHP Portal de Cifras
+        else if (song.url.contains('mvhp.com.br')) {
+          String raw = res.body
+              .replaceAll(RegExp(r'<script[\s\S]*?<\/script>', caseSensitive: false), '')
+              .replaceAll(RegExp(r'<style[\s\S]*?<\/style>', caseSensitive: false), '')
+              .replaceAll(RegExp(r'<br\s*\/?>', caseSensitive: false), '\n')
+              .replaceAll(RegExp(r'<\/p>', caseSensitive: false), '\n\n');
+          parsedCifra = _cleanHtml(raw);
+
+          // Corta cabeçalhos desnecessários do MVHP
+          if (parsedCifra.contains('Tom:')) {
+            final idx = parsedCifra.indexOf('Tom:');
+            final startIdx = parsedCifra.lastIndexOf('\n', idx > 40 ? idx - 40 : 0);
+            if (startIdx != -1) parsedCifra = parsedCifra.substring(startIdx).trim();
+          }
+        }
+
+        if (parsedCifra.trim().isNotEmpty) {
+          song.content = parsedCifra;
+          _addToRecents(song);
+          _navigateToViewer(song);
+          return;
+        }
+      }
+      throw Exception("Não foi possível extrair a cifra.");
+    } catch (e) {
+      if (mounted && Navigator.canPop(context)) Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Não foi possível baixar a letra dessa música.")),
+        const SnackBar(content: Text("Não foi possível carregar a cifra deste link.")),
       );
+    }
+  }
+
+  String _cleanHtml(String html) {
+    return html
+        .replaceAll(RegExp(r'<[^>]+>'), '')
+        .replaceAll('&nbsp;', ' ')
+        .replaceAll('&amp;', '&')
+        .replaceAll('&#39;', "'")
+        .replaceAll('&quot;', '"')
+        .trim();
+  }
+
+  void _navigateToViewer(Song song) {
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => SongViewerPage(
+          song: song,
+          isFav: _isFavorite(song),
+          onFavToggle: () => _toggleFavorite(song),
+        ),
+      ),
+    ).then((_) => _loadStoredData());
+  }
+
+  Color _getSourceColor(String source) {
+    switch (source) {
+      case 'Cifra Club':
+        return Colors.deepOrange;
+      case 'Banana Cifras':
+        return Colors.amber.shade800;
+      case 'MVHP Portal':
+        return Colors.blue.shade700;
+      default:
+        return Colors.grey.shade700;
     }
   }
 
@@ -253,9 +385,19 @@ class _HomePageState extends State<HomePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Cavaco Cifras & Letras', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Cavaco Cifras Brasil', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.deepOrange,
         foregroundColor: Colors.white,
+        bottom: TabBar(
+          controller: _tabController,
+          labelColor: Colors.white,
+          unselectedLabelColor: Colors.white70,
+          indicatorColor: Colors.white,
+          tabs: const [
+            Tab(icon: Icon(Icons.history), text: "Recentes (10)"),
+            Tab(icon: Icon(Icons.star), text: "Favoritos"),
+          ],
+        ),
       ),
       body: Column(
         children: [
@@ -267,258 +409,19 @@ class _HomePageState extends State<HomePage> {
                   child: TextField(
                     controller: _searchController,
                     decoration: InputDecoration(
-                      hintText: 'Pesquise música, cantor ou trecho...',
+                      hintText: 'Música, cantor ou trecho...',
                       prefixIcon: const Icon(Icons.search),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       filled: true,
                       fillColor: Colors.grey.shade100,
                     ),
-                    onSubmitted: _performSearch,
+                    onSubmitted: _searchOnline,
                   ),
                 ),
                 const SizedBox(width: 8),
                 IconButton.filled(
                   style: IconButton.styleFrom(backgroundColor: Colors.deepOrange),
                   icon: const Icon(Icons.search, color: Colors.white),
-                  onPressed: () => _performSearch(_searchController.text),
+                  onPressed: () => _searchOnline(_searchController.text),
                 ),
               ],
-            ),
-          ),
-          if (_isLoading) const LinearProgressIndicator(color: Colors.deepOrange),
-          if (_message.isNotEmpty && !_isLoading)
-            Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Text(_message, style: const TextStyle(color: Colors.grey)),
-            ),
-          Expanded(
-            child: ListView.builder(
-              itemCount: _searchResults.length,
-              itemBuilder: (context, index) {
-                final song = _searchResults[index];
-                return Card(
-                  margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  child: ListTile(
-                    title: Text(song.title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                    subtitle: Text(song.artist, style: const TextStyle(color: Colors.deepOrange)),
-                    trailing: const Icon(Icons.chevron_right),
-                    onTap: () => _openSong(song),
-                  ),
-                );
-              },
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
-class SongViewerPage extends StatefulWidget {
-  final Song song;
-  const SongViewerPage({super.key, required this.song});
-
-  @override
-  State<SongViewerPage> createState() => _SongViewerPageState();
-}
-
-class _SongViewerPageState extends State<SongViewerPage> {
-  final ScrollController _scrollController = ScrollController();
-  bool _isAutoScrolling = false;
-  Timer? _scrollTimer;
-  double _scrollSpeed = 1.0;
-
-  void _toggleAutoScroll() {
-    setState(() {
-      _isAutoScrolling = !_isAutoScrolling;
-      if (_isAutoScrolling) {
-        _scrollTimer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
-          if (_scrollController.hasClients) {
-            final max = _scrollController.position.maxScrollExtent;
-            final current = _scrollController.offset;
-            if (current >= max) {
-              _toggleAutoScroll();
-            } else {
-              _scrollController.jumpTo(current + _scrollSpeed);
-            }
-          }
-        });
-      } else {
-        _scrollTimer?.cancel();
-      }
-    });
-  }
-
-  @override
-  void dispose() {
-    _scrollTimer?.cancel();
-    _scrollController.dispose();
-    super.dispose();
-  }
-
-  void _showChordDialog(String chord) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-      builder: (_) {
-        final frets = cavacoChords[chord];
-        return Padding(
-          padding: const EdgeInsets.all(20.0),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text('Acorde: $chord (Cavaquinho)', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
-              const Text('Afinação: Ré - Sol - Si - Ré', style: TextStyle(color: Colors.grey)),
-              const SizedBox(height: 20),
-              frets != null
-                  ? CustomPaint(size: const Size(160, 200), painter: CavacoChordPainter(frets))
-                  : const Text('Posição do acorde não cadastrada ainda.'),
-              const SizedBox(height: 20),
-            ],
-          ),
-        );
-      },
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final lines = widget.song.content.trim().split('\n');
-
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(widget.song.title),
-        backgroundColor: Colors.deepOrange,
-        foregroundColor: Colors.white,
-      ),
-      bottomNavigationBar: Container(
-        color: Colors.grey.shade200,
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            ElevatedButton.icon(
-              onPressed: _toggleAutoScroll,
-              icon: Icon(_isAutoScrolling ? Icons.pause : Icons.play_arrow),
-              label: Text(_isAutoScrolling ? 'Pausar' : 'Rolagem Auto'),
-            ),
-            Row(
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.remove),
-                  onPressed: () {
-                    if (_scrollSpeed > 0.5) setState(() => _scrollSpeed -= 0.5);
-                  },
-                ),
-                Text('${_scrollSpeed}x'),
-                IconButton(
-                  icon: const Icon(Icons.add),
-                  onPressed: () => setState(() => _scrollSpeed += 0.5),
-                ),
-              ],
-            )
-          ],
-        ),
-      ),
-      body: ListView.builder(
-        controller: _scrollController,
-        padding: const EdgeInsets.all(16),
-        itemCount: lines.length,
-        itemBuilder: (context, index) {
-          final line = lines[index];
-          final regex = RegExp(r'\[(.*?)\]');
-          final matches = regex.allMatches(line);
-
-          if (matches.isEmpty) {
-            return Padding(
-              padding: const EdgeInsets.symmetric(vertical: 3.0),
-              child: Text(line, style: const TextStyle(fontSize: 16)),
-            );
-          }
-
-          final spans = <InlineSpan>[];
-          int lastMatchEnd = 0;
-
-          for (final match in matches) {
-            if (match.start > lastMatchEnd) {
-              spans.add(TextSpan(text: line.substring(lastMatchEnd, match.start), style: const TextStyle(fontSize: 16, color: Colors.black)));
-            }
-            final chord = match.group(1)!;
-            spans.add(
-              WidgetSpan(
-                alignment: PlaceholderAlignment.middle,
-                child: GestureDetector(
-                  onTap: () => _showChordDialog(chord),
-                  child: Container(
-                    margin: const EdgeInsets.symmetric(horizontal: 2),
-                    padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                    decoration: BoxDecoration(
-                      color: Colors.deepOrange.shade100,
-                      borderRadius: BorderRadius.circular(4),
-                    ),
-                    child: Text(chord, style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange, fontSize: 16)),
-                  ),
-                ),
-              ),
-            );
-            lastMatchEnd = match.end;
-          }
-
-          if (lastMatchEnd < line.length) {
-            spans.add(TextSpan(text: line.substring(lastMatchEnd), style: const TextStyle(fontSize: 16, color: Colors.black)));
-          }
-
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 3.0),
-            child: Text.rich(TextSpan(children: spans)),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class CavacoChordPainter extends CustomPainter {
-  final List<int> frets;
-  CavacoChordPainter(this.frets);
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final linePaint = Paint()..color = Colors.black..strokeWidth = 2;
-    final nutPaint = Paint()..color = Colors.black..strokeWidth = 6;
-    final dotPaint = Paint()..color = Colors.deepOrange..style = PaintingStyle.fill;
-
-    const numStrings = 4;
-    const numFrets = 4;
-    final stringSpacing = size.width / (numStrings - 1);
-    final fretSpacing = size.height / numFrets;
-
-    canvas.drawLine(const Offset(0, 0), Offset(size.width, 0), nutPaint);
-
-    for (int i = 0; i < numStrings; i++) {
-      final x = i * stringSpacing;
-      canvas.drawLine(Offset(x, 0), Offset(x, size.height), linePaint);
-    }
-
-    for (int i = 1; i <= numFrets; i++) {
-      final y = i * fretSpacing;
-      canvas.drawLine(Offset(0, y), Offset(size.width, y), linePaint);
-    }
-
-    for (int i = 0; i < frets.length; i++) {
-      final fret = frets[i];
-      final x = i * stringSpacing;
-
-      if (fret > 0) {
-        final y = (fret * fretSpacing) - (fretSpacing / 2);
-        canvas.drawCircle(Offset(x, y), 8, dotPaint);
-      } else {
-        final openPaint = Paint()..color = Colors.black..style = PaintingStyle.stroke..strokeWidth = 2;
-        canvas.drawCircle(Offset(x, -8), 4, openPaint);
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
-}
