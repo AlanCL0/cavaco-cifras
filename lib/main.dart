@@ -25,12 +25,11 @@ class CavacoApp extends StatelessWidget {
   }
 }
 
-// Modelo de Música
 class Song {
   final String title;
   final String artist;
   final String url;
-  final String source; // "Cifra Club", "Banana Cifras" ou "MVHP Portal"
+  final String source;
   String content;
 
   Song({
@@ -58,29 +57,24 @@ class Song {
       );
 }
 
-// Biblioteca de Acordes do Cavaquinho (Ré - Sol - Si - Ré)
 final Map<String, List<int>> cavacoChords = {
-  // Dó
   "C": [2, 0, 1, 2],
   "C7": [2, 3, 1, 2],
   "C7M": [2, 0, 0, 2],
   "C6": [2, 2, 1, 2],
   "Cm": [1, 0, 1, 1],
   "Cm7": [1, 3, 1, 1],
-  // Ré
   "D": [0, 2, 3, 4],
   "D7": [0, 2, 1, 0],
   "D7M": [0, 2, 2, 0],
   "D6": [0, 2, 0, 0],
   "Dm": [3, 2, 3, 0],
   "Dm7": [3, 2, 1, 0],
-  // Mi
   "E": [2, 1, 0, 2],
   "E7": [2, 1, 0, 0],
   "E7M": [2, 1, 0, 1],
   "Em": [2, 0, 0, 2],
   "Em7": [0, 0, 0, 2],
-  // Fá
   "F": [3, 2, 1, 3],
   "F7": [3, 2, 4, 3],
   "F7M": [3, 2, 1, 2],
@@ -89,7 +83,6 @@ final Map<String, List<int>> cavacoChords = {
   "F#7": [4, 3, 2, 2],
   "F#m": [4, 2, 2, 4],
   "F#m7": [4, 2, 2, 2],
-  // Sol
   "G": [0, 0, 0, 0],
   "G7": [0, 0, 0, 3],
   "G7M": [0, 0, 0, 4],
@@ -99,7 +92,6 @@ final Map<String, List<int>> cavacoChords = {
   "G#": [1, 1, 1, 1],
   "G#7": [1, 1, 1, 4],
   "G#m": [1, 4, 4, 1],
-  // Lá
   "A": [2, 2, 2, 2],
   "A7": [2, 0, 2, 2],
   "A7M": [2, 1, 2, 2],
@@ -109,7 +101,6 @@ final Map<String, List<int>> cavacoChords = {
   "Bb": [3, 3, 3, 3],
   "Bb7": [3, 1, 3, 3],
   "Bbm": [3, 3, 2, 3],
-  // Si
   "B": [4, 4, 4, 4],
   "B7": [1, 2, 0, 1],
   "B7M": [4, 3, 4, 4],
@@ -150,8 +141,8 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     final favsJson = prefs.getStringList('favorite_songs') ?? [];
 
     setState(() {
-      _recentSongs = recentsJson.map((e) => Song.fromMap(jsonDecode(e))).toList();
-      _favoriteSongs = favsJson.map((e) => Song.fromMap(jsonDecode(e))).toList();
+      _recentSongs = recentsJson.map((e) => Song.fromMap(jsonDecode(e) as Map<String, dynamic>)).toList();
+      _favoriteSongs = favsJson.map((e) => Song.fromMap(jsonDecode(e) as Map<String, dynamic>)).toList();
     });
   }
 
@@ -189,7 +180,6 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     return _favoriteSongs.any((s) => s.title == song.title && s.artist == song.artist);
   }
 
-  // Busca conjunta: Cifra Club, Banana Cifras e MVHP Portal de Cifras
   Future<void> _searchOnline(String query) async {
     if (query.trim().isEmpty) return;
 
@@ -270,7 +260,6 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     }
   }
 
-  // Baixa e extrai a cifra de acordo com o portal
   Future<void> _openSong(Song song) async {
     if (song.content.isNotEmpty) {
       _addToRecents(song);
@@ -289,12 +278,13 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36',
       }).timeout(const Duration(seconds: 12));
 
-      Navigator.pop(context);
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
 
       if (res.statusCode == 200) {
         String parsedCifra = "";
 
-        // 1. Extração Cifra Club
         if (song.url.contains('cifraclub.com.br')) {
           final preMatch = RegExp(r'<pre[^>]*>([\s\S]*?)<\/pre>').firstMatch(res.body);
           if (preMatch != null) {
@@ -302,18 +292,14 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             raw = raw.replaceAllMapped(RegExp(r'<b>(.*?)<\/b>'), (m) => '[${m.group(1)}]');
             parsedCifra = _cleanHtml(raw);
           }
-        }
-        // 2. Extração Banana Cifras
-        else if (song.url.contains('bananacifras.com')) {
+        } else if (song.url.contains('bananacifras.com')) {
           final match = RegExp(r'<pre[^>]*>([\s\S]*?)<\/pre>|<div[^>]+class="[^"]*(?:cifra|chords)[^"]*"[^>]*>([\s\S]*?)<\/div>')
               .firstMatch(res.body);
           String raw = match != null ? (match.group(1) ?? match.group(2) ?? '') : res.body;
-          raw = raw.replaceAllMapped(RegExp(r'<span[^>]*class="[^"]*chord[^"]*"[^>]*>(.*?)<\/span>|<b>(.*?)<\/b>'),
+          raw = raw.replaceAllMapped(RegExp(r'<span[^>]*class="[^"]*(?:chord|cifra)[^"]*"[^>]*>(.*?)<\/span>|<b>(.*?)<\/b>'),
               (m) => '[${m.group(1) ?? m.group(2)}]');
           parsedCifra = _cleanHtml(raw);
-        }
-        // 3. Extração MVHP Portal de Cifras
-        else if (song.url.contains('mvhp.com.br')) {
+        } else if (song.url.contains('mvhp.com.br')) {
           String raw = res.body
               .replaceAll(RegExp(r'<script[\s\S]*?<\/script>', caseSensitive: false), '')
               .replaceAll(RegExp(r'<style[\s\S]*?<\/style>', caseSensitive: false), '')
@@ -321,7 +307,6 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               .replaceAll(RegExp(r'<\/p>', caseSensitive: false), '\n\n');
           parsedCifra = _cleanHtml(raw);
 
-          // Corta cabeçalhos desnecessários do MVHP
           if (parsedCifra.contains('Tom:')) {
             final idx = parsedCifra.indexOf('Tom:');
             final startIdx = parsedCifra.lastIndexOf('\n', idx > 40 ? idx - 40 : 0);
@@ -336,12 +321,16 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
           return;
         }
       }
-      throw Exception("Não foi possível extrair a cifra.");
+      throw Exception("Cifra vazia");
     } catch (e) {
-      if (mounted && Navigator.canPop(context)) Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("Não foi possível carregar a cifra deste link.")),
-      );
+      if (mounted && Navigator.canPop(context)) {
+        Navigator.pop(context);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text("Não foi possível carregar a cifra deste link.")),
+        );
+      }
     }
   }
 
@@ -425,3 +414,368 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                   onPressed: () => _searchOnline(_searchController.text),
                 ),
               ],
+            ),
+          ),
+          if (_isLoading) const LinearProgressIndicator(color: Colors.deepOrange),
+          if (_statusMessage.isNotEmpty && !_isLoading)
+            Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Text(_statusMessage, style: const TextStyle(color: Colors.grey)),
+            ),
+
+          if (_searchResults.isNotEmpty)
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Resultados Encontrados:', style: TextStyle(fontWeight: FontWeight.bold)),
+                        TextButton(
+                          onPressed: () => setState(() => _searchResults.clear()),
+                          child: const Text('Limpar'),
+                        )
+                      ],
+                    ),
+                  ),
+                  Expanded(
+                    child: ListView.builder(
+                      itemCount: _searchResults.length,
+                      itemBuilder: (context, index) {
+                        final song = _searchResults[index];
+                        final badgeColor = _getSourceColor(song.source);
+
+                        return Card(
+                          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                          child: ListTile(
+                            title: Text(song.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                            subtitle: Row(
+                              children: [
+                                Text(song.artist),
+                                const SizedBox(width: 8),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: badgeColor.withAlpha(40),
+                                    borderRadius: BorderRadius.circular(4),
+                                    border: Border.all(color: badgeColor, width: 0.8),
+                                  ),
+                                  child: Text(
+                                    song.source,
+                                    style: TextStyle(color: badgeColor, fontSize: 10, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            trailing: const Icon(Icons.chevron_right),
+                            onTap: () => _openSong(song),
+                          ),
+                        );
+                      },
+                    ),
+                  ),
+                ],
+              ),
+            )
+          else
+            Expanded(
+              child: TabBarView(
+                controller: _tabController,
+                children: [
+                  _recentSongs.isEmpty
+                      ? const Center(child: Text('Nenhuma música recente.'))
+                      : ListView.builder(
+                          itemCount: _recentSongs.length,
+                          itemBuilder: (context, index) {
+                            final song = _recentSongs[index];
+                            return Card(
+                              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                              child: ListTile(
+                                leading: const Icon(Icons.history, color: Colors.deepOrange),
+                                title: Text(song.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                subtitle: Text("${song.artist} • ${song.source}"),
+                                trailing: const Icon(Icons.chevron_right),
+                                onTap: () => _openSong(song),
+                              ),
+                            );
+                          },
+                        ),
+                  _favoriteSongs.isEmpty
+                      ? const Center(child: Text('Nenhuma cifra salva em favoritos.'))
+                      : ListView.builder(
+                          itemCount: _favoriteSongs.length,
+                          itemBuilder: (context, index) {
+                            final song = _favoriteSongs[index];
+                            return Card(
+                              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                              child: ListTile(
+                                leading: const Icon(Icons.star, color: Colors.amber),
+                                title: Text(song.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                subtitle: Text("${song.artist} • ${song.source}"),
+                                trailing: IconButton(
+                                  icon: const Icon(Icons.delete_outline, color: Colors.grey),
+                                  onPressed: () => _toggleFavorite(song),
+                                ),
+                                onTap: () => _openSong(song),
+                              ),
+                            );
+                          },
+                        ),
+                ],
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class SongViewerPage extends StatefulWidget {
+  final Song song;
+  final bool isFav;
+  final VoidCallback onFavToggle;
+
+  const SongViewerPage({
+    super.key,
+    required this.song,
+    required this.isFav,
+    required this.onFavToggle,
+  });
+
+  @override
+  State<SongViewerPage> createState() => _SongViewerPageState();
+}
+
+class _SongViewerPageState extends State<SongViewerPage> {
+  final ScrollController _scrollController = ScrollController();
+  bool _isAutoScrolling = false;
+  Timer? _scrollTimer;
+  double _scrollSpeed = 1.0;
+  late bool _fav;
+
+  @override
+  void initState() {
+    super.initState();
+    _fav = widget.isFav;
+  }
+
+  void _toggleAutoScroll() {
+    setState(() {
+      _isAutoScrolling = !_isAutoScrolling;
+      if (_isAutoScrolling) {
+        _scrollTimer = Timer.periodic(const Duration(milliseconds: 50), (timer) {
+          if (_scrollController.hasClients) {
+            final max = _scrollController.position.maxScrollExtent;
+            final current = _scrollController.offset;
+            if (current >= max) {
+              _toggleAutoScroll();
+            } else {
+              _scrollController.jumpTo(current + _scrollSpeed);
+            }
+          }
+        });
+      } else {
+        _scrollTimer?.cancel();
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _scrollTimer?.cancel();
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _showChordDialog(String chord) {
+    String clean = chord.replaceAll(RegExp(r'[\[\]\(\)\,\.]'), '').trim();
+    clean = clean.replaceAll('+', '7M');
+
+    List<int>? frets = cavacoChords[clean];
+    if (frets == null && clean.length > 1) {
+      frets = cavacoChords[clean.substring(0, 2)] ?? cavacoChords[clean.substring(0, 1)];
+    }
+
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(20.0),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Text('Acorde: $clean (Cavaquinho)', style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+            const Text('Afinação: Ré - Sol - Si - Ré', style: TextStyle(color: Colors.grey)),
+            const SizedBox(height: 20),
+            frets != null
+                ? CustomPaint(size: const Size(160, 200), painter: CavacoChordPainter(frets))
+                : Text('Formação de $clean em breve!'),
+            const SizedBox(height: 20),
+          ],
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final lines = widget.song.content.trim().split('\n');
+
+    return Scaffold(
+      appBar: AppBar(
+        title: Text(widget.song.title),
+        backgroundColor: Colors.deepOrange,
+        foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: Icon(_fav ? Icons.star : Icons.star_border, color: _fav ? Colors.amber : Colors.white),
+            onPressed: () {
+              setState(() => _fav = !_fav);
+              widget.onFavToggle();
+            },
+          )
+        ],
+      ),
+      bottomNavigationBar: Container(
+        color: Colors.grey.shade200,
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            ElevatedButton.icon(
+              onPressed: _toggleAutoScroll,
+              icon: Icon(_isAutoScrolling ? Icons.pause : Icons.play_arrow),
+              label: Text(_isAutoScrolling ? 'Pausar' : 'Rolagem'),
+            ),
+            Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.remove),
+                  onPressed: () {
+                    if (_scrollSpeed > 0.5) setState(() => _scrollSpeed -= 0.5);
+                  },
+                ),
+                Text('${_scrollSpeed}x'),
+                IconButton(
+                  icon: const Icon(Icons.add),
+                  onPressed: () => setState(() => _scrollSpeed += 0.5),
+                ),
+              ],
+            )
+          ],
+        ),
+      ),
+      body: ListView.builder(
+        controller: _scrollController,
+        padding: const EdgeInsets.all(16),
+        itemCount: lines.length,
+        itemBuilder: (context, index) {
+          final line = lines[index];
+          final regex = RegExp(r'(\[[A-G][b#]?[^\]]*\]|\b[A-G][b#]?(?:m|M|maj|min|dim|aug|sus|\+|º)?[0-9]*(?:\/[A-G][b#]?)?\b)');
+          final matches = regex.allMatches(line);
+
+          if (matches.isEmpty) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 2.0),
+              child: Text(line, style: const TextStyle(fontSize: 16, fontFamily: 'monospace')),
+            );
+          }
+
+          final spans = <InlineSpan>[];
+          int lastMatchEnd = 0;
+
+          for (final match in matches) {
+            if (match.start > lastMatchEnd) {
+              spans.add(TextSpan(
+                text: line.substring(lastMatchEnd, match.start),
+                style: const TextStyle(fontSize: 16, color: Colors.black, fontFamily: 'monospace'),
+              ));
+            }
+            final chord = match.group(0)!;
+            spans.add(
+              WidgetSpan(
+                alignment: PlaceholderAlignment.middle,
+                child: GestureDetector(
+                  onTap: () => _showChordDialog(chord),
+                  child: Container(
+                    margin: const EdgeInsets.symmetric(horizontal: 2),
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+                    decoration: BoxDecoration(
+                      color: Colors.deepOrange.shade100,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      chord.replaceAll('[', '').replaceAll(']', ''),
+                      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange, fontSize: 16),
+                    ),
+                  ),
+                ),
+              ),
+            );
+            lastMatchEnd = match.end;
+          }
+
+          if (lastMatchEnd < line.length) {
+            spans.add(TextSpan(
+              text: line.substring(lastMatchEnd),
+              style: const TextStyle(fontSize: 16, color: Colors.black, fontFamily: 'monospace'),
+            ));
+          }
+
+          return Padding(
+            padding: const EdgeInsets.symmetric(vertical: 2.0),
+            child: Text.rich(TextSpan(children: spans)),
+          );
+        },
+      ),
+    );
+  }
+}
+
+class CavacoChordPainter extends CustomPainter {
+  final List<int> frets;
+  CavacoChordPainter(this.frets);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final linePaint = Paint()..color = Colors.black..strokeWidth = 2;
+    final nutPaint = Paint()..color = Colors.black..strokeWidth = 6;
+    final dotPaint = Paint()..color = Colors.deepOrange..style = PaintingStyle.fill;
+
+    const numStrings = 4;
+    const numFrets = 4;
+    final stringSpacing = size.width / (numStrings - 1);
+    final fretSpacing = size.height / numFrets;
+
+    canvas.drawLine(const Offset(0, 0), Offset(size.width, 0), nutPaint);
+
+    for (int i = 0; i < numStrings; i++) {
+      final x = i * stringSpacing;
+      canvas.drawLine(Offset(x, 0), Offset(x, size.height), linePaint);
+    }
+
+    for (int i = 1; i <= numFrets; i++) {
+      final y = i * fretSpacing;
+      canvas.drawLine(Offset(0, y), Offset(size.width, y), linePaint);
+    }
+
+    for (int i = 0; i < frets.length; i++) {
+      final fret = frets[i];
+      final x = i * stringSpacing;
+
+      if (fret > 0) {
+        final y = (fret * fretSpacing) - (fretSpacing / 2);
+        canvas.drawCircle(Offset(x, y), 8, dotPaint);
+      } else {
+        final openPaint = Paint()..color = Colors.black..style = PaintingStyle.stroke..strokeWidth = 2;
+        canvas.drawCircle(Offset(x, -8), 4, openPaint);
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => true;
+}
