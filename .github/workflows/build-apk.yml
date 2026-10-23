@@ -25,12 +25,22 @@ jobs:
           flutter-version: '3.22.x'
           channel: 'stable'
 
-      - name: Gerar estrutura Android com Permissão de Internet
+      - name: Gerar estrutura Android sem sobrescrever dependencias
         run: |
+          # 1. Faz backup do pubspec
+          cp pubspec.yaml pubspec.backup.yaml
+          
+          # 2. Gera os arquivos do Android
           flutter create --platforms=android --project-name cavaco_cifras --org com.cavacoapp .
-          # Injeta permissao de INTERNET no AndroidManifest
-          sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET"/>' android/app/src/main/AndroidManifest.xml
+          
+          # 3. Restaura o pubspec original e garante a instalacao das bibliotecas
+          cp pubspec.backup.yaml pubspec.yaml
+          flutter pub add http shared_preferences
           flutter pub get
+
+      - name: Inserir permissao de internet no Android
+        run: |
+          sed -i '/<manifest/a \    <uses-permission android:name="android.permission.INTERNET"/>' android/app/src/main/AndroidManifest.xml
 
       - name: Aceitar licencas do Android
         run: yes | flutter doctor --android-licenses || true
