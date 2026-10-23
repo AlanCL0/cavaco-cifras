@@ -25,9 +25,11 @@ jobs:
           flutter-version: '3.22.x'
           channel: 'stable'
 
-      - name: Gerar estrutura Android com nome valido
+      - name: Gerar estrutura Android com Permissão de Internet
         run: |
           flutter create --platforms=android --project-name cavaco_cifras --org com.cavacoapp .
+          # Injeta permissao de INTERNET no AndroidManifest
+          sed -i '/<application/i \    <uses-permission android:name="android.permission.INTERNET"/>' android/app/src/main/AndroidManifest.xml
           flutter pub get
 
       - name: Aceitar licencas do Android
