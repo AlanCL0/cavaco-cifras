@@ -4,7 +4,15 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
-void main() {
+// Gerenciador global de Tema (Claro / Escuro)
+final ValueNotifier<ThemeMode> themeNotifier = ValueNotifier(ThemeMode.light);
+
+void main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  final prefs = await SharedPreferences.getInstance();
+  final isDark = prefs.getBool('is_dark_mode') ?? false;
+  themeNotifier.value = isDark ? ThemeMode.dark : ThemeMode.light;
+
   runApp(const CavacoApp());
 }
 
@@ -13,30 +21,49 @@ class CavacoApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'Cavaco Cifras',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        colorScheme: ColorScheme.fromSeed(seedColor: Colors.deepOrange),
-        useMaterial3: true,
-      ),
-      home: const HomePage(),
+    return ValueListenableBuilder<ThemeMode>(
+      valueListenable: themeNotifier,
+      builder: (context, currentMode, _) {
+        return MaterialApp(
+          title: 'Cavaco Cifras',
+          debugShowCheckedModeBanner: false,
+          themeMode: currentMode,
+          theme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.deepOrange,
+              brightness: Brightness.light,
+            ),
+            useMaterial3: true,
+          ),
+          darkTheme: ThemeData(
+            colorScheme: ColorScheme.fromSeed(
+              seedColor: Colors.deepOrange,
+              brightness: Brightness.dark,
+            ),
+            scaffoldBackgroundColor: const Color(0xFF121212),
+            cardColor: const Color(0xFF1E1E1E),
+            useMaterial3: true,
+          ),
+          home: const HomePage(),
+        );
+      },
     );
   }
 }
 
+// Modelo de Música
 class Song {
   final String title;
   final String artist;
   final String url;
-  final String source;
+  final int popularityRank; // 1 = mais conhecida
   String content;
 
   Song({
     required this.title,
     required this.artist,
     required this.url,
-    required this.source,
+    this.popularityRank = 0,
     required this.content,
   });
 
@@ -44,7 +71,7 @@ class Song {
         'title': title,
         'artist': artist,
         'url': url,
-        'source': source,
+        'popularityRank': popularityRank,
         'content': content,
       };
 
@@ -52,29 +79,34 @@ class Song {
         title: map['title'] ?? '',
         artist: map['artist'] ?? '',
         url: map['url'] ?? '',
-        source: map['source'] ?? 'Cifra',
+        popularityRank: map['popularityRank'] ?? 0,
         content: map['content'] ?? '',
       );
 }
 
+// Dicionário de Acordes de Cavaquinho (Ré - Sol - Si - Ré)
 final Map<String, List<int>> cavacoChords = {
+  // Dó
   "C": [2, 0, 1, 2],
   "C7": [2, 3, 1, 2],
   "C7M": [2, 0, 0, 2],
   "C6": [2, 2, 1, 2],
   "Cm": [1, 0, 1, 1],
   "Cm7": [1, 3, 1, 1],
+  // Ré
   "D": [0, 2, 3, 4],
   "D7": [0, 2, 1, 0],
   "D7M": [0, 2, 2, 0],
   "D6": [0, 2, 0, 0],
   "Dm": [3, 2, 3, 0],
   "Dm7": [3, 2, 1, 0],
+  // Mi
   "E": [2, 1, 0, 2],
   "E7": [2, 1, 0, 0],
   "E7M": [2, 1, 0, 1],
   "Em": [2, 0, 0, 2],
   "Em7": [0, 0, 0, 2],
+  // Fá
   "F": [3, 2, 1, 3],
   "F7": [3, 2, 4, 3],
   "F7M": [3, 2, 1, 2],
@@ -83,6 +115,7 @@ final Map<String, List<int>> cavacoChords = {
   "F#7": [4, 3, 2, 2],
   "F#m": [4, 2, 2, 4],
   "F#m7": [4, 2, 2, 2],
+  // Sol
   "G": [0, 0, 0, 0],
   "G7": [0, 0, 0, 3],
   "G7M": [0, 0, 0, 4],
@@ -92,6 +125,7 @@ final Map<String, List<int>> cavacoChords = {
   "G#": [1, 1, 1, 1],
   "G#7": [1, 1, 1, 4],
   "G#m": [1, 4, 4, 1],
+  // Lá
   "A": [2, 2, 2, 2],
   "A7": [2, 0, 2, 2],
   "A7M": [2, 1, 2, 2],
@@ -101,6 +135,7 @@ final Map<String, List<int>> cavacoChords = {
   "Bb": [3, 3, 3, 3],
   "Bb7": [3, 1, 3, 3],
   "Bbm": [3, 3, 2, 3],
+  // Si
   "B": [4, 4, 4, 4],
   "B7": [1, 2, 0, 1],
   "B7M": [4, 3, 4, 4],
@@ -126,6 +161,9 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   List<Song> _favoriteSongs = [];
 
   bool _isLoading = false;
+  bool _isArtistSearch = false;
+  bool _sortSearchAlpha = false;
+  bool _sortFavsAlpha = false;
   String _statusMessage = "";
 
   @override
@@ -144,6 +182,13 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
       _recentSongs = recentsJson.map((e) => Song.fromMap(jsonDecode(e) as Map<String, dynamic>)).toList();
       _favoriteSongs = favsJson.map((e) => Song.fromMap(jsonDecode(e) as Map<String, dynamic>)).toList();
     });
+  }
+
+  Future<void> _toggleTheme() async {
+    final prefs = await SharedPreferences.getInstance();
+    final isDark = themeNotifier.value == ThemeMode.dark;
+    themeNotifier.value = isDark ? ThemeMode.light : ThemeMode.dark;
+    await prefs.setBool('is_dark_mode', !isDark);
   }
 
   Future<void> _addToRecents(Song song) async {
@@ -180,23 +225,85 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     return _favoriteSongs.any((s) => s.title == song.title && s.artist == song.artist);
   }
 
+  String _generateSlug(String text) {
+    var str = text.toLowerCase().trim();
+    const withDia = 'àáâãäåèéêëìíîïòóôõöùúûüýÿñç·/_,:;';
+    const withoutDia = 'aaaaaaeeeeiiiiooooouuuuyync------';
+    for (int i = 0; i < withDia.length; i++) {
+      str = str.replaceAll(withDia[i], withoutDia[i]);
+    }
+    return str
+        .replaceAll(RegExp(r'[^a-z0-9 -]'), '')
+        .replaceAll(RegExp(r'\s+'), '-')
+        .replaceAll(RegExp(r'-+'), '-');
+  }
+
+  // Busca Inteligente: Identifica se é Artista ou Música
   Future<void> _searchOnline(String query) async {
     if (query.trim().isEmpty) return;
 
     setState(() {
       _isLoading = true;
-      _statusMessage = "Buscando no Cifra Club, Banana Cifras e MVHP...";
+      _statusMessage = "Pesquisando catálogo oficial de cifras...";
       _searchResults.clear();
+      _isArtistSearch = false;
     });
 
+    final slug = _generateSlug(query);
+    final headers = {
+      'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept-Language': 'pt-BR,pt;q=0.9',
+    };
+
     try {
+      // 1. TENTA PRIMEIRO COMO PÁGINA DIRETA DO ARTISTA (Listagem das mais conhecidas)
+      final artistUrl = Uri.parse("https://www.cifraclub.com.br/$slug/");
+      final artistRes = await http.get(artistUrl, headers: headers).timeout(const Duration(seconds: 7));
+
+      if (artistRes.statusCode == 200 && !artistRes.body.contains("Página não encontrada")) {
+        final regex = RegExp(r'<a\s+[^>]*href="/' + RegExp.escape(slug) + r'/([a-z0-9\-]+)/"[^>]*>([\s\S]*?)</a>');
+        final matches = regex.allMatches(artistRes.body);
+
+        final List<Song> artistSongs = [];
+        int rank = 1;
+
+        for (final m in matches) {
+          final songSlug = m.group(1)!;
+          String songTitle = m.group(2)!.replaceAll(RegExp(r'<[^>]+>'), '').trim();
+
+          // Ignora links de navegação do site
+          if (songSlug == 'discografia' || songSlug == 'fotos' || songSlug == 'albuns' || songTitle.isEmpty) {
+            continue;
+          }
+
+          if (!artistSongs.any((s) => s.url.endsWith("/$songSlug/"))) {
+            artistSongs.add(Song(
+              title: songTitle,
+              artist: query.toUpperCase(),
+              url: "https://www.cifraclub.com.br/$slug/$songSlug/",
+              popularityRank: rank++,
+              content: '',
+            ));
+          }
+        }
+
+        if (artistSongs.isNotEmpty) {
+          setState(() {
+            _searchResults = artistSongs;
+            _isArtistSearch = true;
+            _isLoading = false;
+          });
+          return;
+        }
+      }
+
+      // 2. SE NÃO FOR UM ARTISTA, BUSCA ESPECÍFICA DE MÚSICA / TRECHO
       final searchUri = Uri.parse(
-        "https://html.duckduckgo.com/html/?q=site%3Acifraclub.com.br+OR+site%3Abananacifras.com+OR+site%3Amvhp.com.br+${Uri.encodeComponent(query)}",
+        "https://html.duckduckgo.com/html/?q=site:cifraclub.com.br+\"cifra\"+${Uri.encodeComponent(query)}",
       );
 
-      final res = await http.get(searchUri, headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36',
-      }).timeout(const Duration(seconds: 12));
+      final res = await http.get(searchUri, headers: headers).timeout(const Duration(seconds: 10));
 
       if (res.statusCode == 200) {
         final body = res.body;
@@ -214,33 +321,20 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
             url = Uri.decodeComponent(part);
           }
 
-          String source = "";
-          if (url.contains('cifraclub.com.br') && !url.contains('/blog/')) {
-            source = "Cifra Club";
-          } else if (url.contains('bananacifras.com')) {
-            source = "Banana Cifras";
-          } else if (url.contains('mvhp.com.br')) {
-            source = "MVHP Portal";
-          }
+          // FILTRO ESTRITO: Apenas páginas com artista e música (sem blogs, listas ou vídeos)
+          final isSongPage = RegExp(r'^https?://(?:www\.)?cifraclub\.com\.br/([a-z0-9\-]+)/([a-z0-9\-]+)/?$').hasMatch(url);
+          final isNotJunk = !url.contains('/blog/') && !url.contains('/videoaulas/') && !url.contains('/albuns/');
 
-          if (source.isNotEmpty) {
-            String cleanTitle = rawTitle
-                .replaceAll(RegExp(r'<[^>]*>'), '')
-                .replaceAll('- Cifra Club', '')
-                .replaceAll('- Banana Cifras', '')
-                .replaceAll('- MVHP', '')
-                .replaceAll('MV Portal de Cifras', '')
-                .trim();
-
+          if (isSongPage && isNotJunk) {
+            String cleanTitle = rawTitle.replaceAll(RegExp(r'<[^>]*>'), '').replaceAll('- Cifra Club', '').trim();
             final parts = cleanTitle.split('-');
             final songName = parts[0].trim();
-            final artistName = parts.length > 1 ? parts[1].trim() : source;
+            final artistName = parts.length > 1 ? parts[1].trim() : 'Cifra';
 
             found.add(Song(
               title: songName,
               artist: artistName,
               url: url,
-              source: source,
               content: '',
             ));
           }
@@ -248,18 +342,17 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
         setState(() {
           _searchResults = found;
-          _statusMessage = _searchResults.isEmpty ? "Nenhuma cifra encontrada para essa busca." : "";
+          _statusMessage = _searchResults.isEmpty ? "Nenhuma cifra encontrada. Tente o nome exato da música." : "";
         });
-      } else {
-        setState(() => _statusMessage = "Erro ao conectar aos portais.");
       }
     } catch (e) {
-      setState(() => _statusMessage = "Falha de conexão. Verifique sua internet.");
+      setState(() => _statusMessage = "Verifique sua conexão com a internet.");
     } finally {
       setState(() => _isLoading = false);
     }
   }
 
+  // Abre a cifra e extrai letra com acordes
   Future<void> _openSong(Song song) async {
     if (song.content.isNotEmpty) {
       _addToRecents(song);
@@ -275,73 +368,42 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
 
     try {
       final res = await http.get(Uri.parse(song.url), headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36',
+        'User-Agent': 'Mozilla/5.0 (Linux; Android 10; K) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
       }).timeout(const Duration(seconds: 12));
 
-      if (mounted && Navigator.canPop(context)) {
-        Navigator.pop(context);
-      }
+      if (mounted && Navigator.canPop(context)) Navigator.pop(context);
 
       if (res.statusCode == 200) {
-        String parsedCifra = "";
+        // Extrai a tag <pre> da cifra
+        final preMatch = RegExp(r'<pre[^>]*>([\s\S]*?)</pre>').firstMatch(res.body);
+        if (preMatch != null) {
+          String raw = preMatch.group(1)!;
 
-        if (song.url.contains('cifraclub.com.br')) {
-          final preMatch = RegExp(r'<pre[^>]*>([\s\S]*?)<\/pre>').firstMatch(res.body);
-          if (preMatch != null) {
-            String raw = preMatch.group(1)!;
-            raw = raw.replaceAllMapped(RegExp(r'<b>(.*?)<\/b>'), (m) => '[${m.group(1)}]');
-            parsedCifra = _cleanHtml(raw);
-          }
-        } else if (song.url.contains('bananacifras.com')) {
-          final match = RegExp(r'<pre[^>]*>([\s\S]*?)<\/pre>|<div[^>]+class="[^"]*(?:cifra|chords)[^"]*"[^>]*>([\s\S]*?)<\/div>')
-              .firstMatch(res.body);
-          String raw = match != null ? (match.group(1) ?? match.group(2) ?? '') : res.body;
-          raw = raw.replaceAllMapped(RegExp(r'<span[^>]*class="[^"]*(?:chord|cifra)[^"]*"[^>]*>(.*?)<\/span>|<b>(.*?)<\/b>'),
-              (m) => '[${m.group(1) ?? m.group(2)}]');
-          parsedCifra = _cleanHtml(raw);
-        } else if (song.url.contains('mvhp.com.br')) {
-          String raw = res.body
-              .replaceAll(RegExp(r'<script[\s\S]*?<\/script>', caseSensitive: false), '')
-              .replaceAll(RegExp(r'<style[\s\S]*?<\/style>', caseSensitive: false), '')
-              .replaceAll(RegExp(r'<br\s*\/?>', caseSensitive: false), '\n')
-              .replaceAll(RegExp(r'<\/p>', caseSensitive: false), '\n\n');
-          parsedCifra = _cleanHtml(raw);
+          // Transforma acordes <b> em [Acorde]
+          raw = raw.replaceAllMapped(RegExp(r'<b>(.*?)</b>'), (m) => '[${m.group(1)}]');
+          raw = raw.replaceAll(RegExp(r'<[^>]+>'), '');
+          raw = raw
+              .replaceAll('&nbsp;', ' ')
+              .replaceAll('&amp;', '&')
+              .replaceAll('&#39;', "'")
+              .replaceAll('&quot;', '"')
+              .trim();
 
-          if (parsedCifra.contains('Tom:')) {
-            final idx = parsedCifra.indexOf('Tom:');
-            final startIdx = parsedCifra.lastIndexOf('\n', idx > 40 ? idx - 40 : 0);
-            if (startIdx != -1) parsedCifra = parsedCifra.substring(startIdx).trim();
-          }
-        }
-
-        if (parsedCifra.trim().isNotEmpty) {
-          song.content = parsedCifra;
+          song.content = raw;
           _addToRecents(song);
           _navigateToViewer(song);
           return;
         }
       }
-      throw Exception("Cifra vazia");
+      throw Exception("Cifra não encontrada");
     } catch (e) {
-      if (mounted && Navigator.canPop(context)) {
-        Navigator.pop(context);
-      }
+      if (mounted && Navigator.canPop(context)) Navigator.pop(context);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text("Não foi possível carregar a cifra deste link.")),
+          const SnackBar(content: Text("Não foi possível extrair a cifra desta música.")),
         );
       }
     }
-  }
-
-  String _cleanHtml(String html) {
-    return html
-        .replaceAll(RegExp(r'<[^>]+>'), '')
-        .replaceAll('&nbsp;', ' ')
-        .replaceAll('&amp;', '&')
-        .replaceAll('&#39;', "'")
-        .replaceAll('&quot;', '"')
-        .trim();
   }
 
   void _navigateToViewer(Song song) {
@@ -357,26 +419,36 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
     ).then((_) => _loadStoredData());
   }
 
-  Color _getSourceColor(String source) {
-    switch (source) {
-      case 'Cifra Club':
-        return Colors.deepOrange;
-      case 'Banana Cifras':
-        return Colors.amber.shade800;
-      case 'MVHP Portal':
-        return Colors.blue.shade700;
-      default:
-        return Colors.grey.shade700;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
+    final isDark = Theme.of(context).brightness == Brightness.dark;
+
+    // Organização dos resultados
+    final displayedResults = List<Song>.from(_searchResults);
+    if (_sortSearchAlpha) {
+      displayedResults.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+    } else if (_isArtistSearch) {
+      displayedResults.sort((a, b) => a.popularityRank.compareTo(b.popularityRank));
+    }
+
+    // Organização dos favoritos
+    final displayedFavs = List<Song>.from(_favoriteSongs);
+    if (_sortFavsAlpha) {
+      displayedFavs.sort((a, b) => a.title.toLowerCase().compareTo(b.title.toLowerCase()));
+    }
+
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Cavaco Cifras Brasil', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Cavaco Cifras', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.deepOrange,
         foregroundColor: Colors.white,
+        actions: [
+          IconButton(
+            icon: Icon(isDark ? Icons.light_mode : Icons.dark_mode),
+            tooltip: isDark ? 'Modo Claro' : 'Modo Escuro',
+            onPressed: _toggleTheme,
+          )
+        ],
         bottom: TabBar(
           controller: _tabController,
           labelColor: Colors.white,
@@ -398,11 +470,10 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                   child: TextField(
                     controller: _searchController,
                     decoration: InputDecoration(
-                      hintText: 'Música, cantor ou trecho...',
+                      hintText: 'Digite artista, música ou trecho...',
                       prefixIcon: const Icon(Icons.search),
                       border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                       filled: true,
-                      fillColor: Colors.grey.shade100,
                     ),
                     onSubmitted: _searchOnline,
                   ),
@@ -423,53 +494,54 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               child: Text(_statusMessage, style: const TextStyle(color: Colors.grey)),
             ),
 
+          // LISTAGEM DE RESULTADOS DA BUSCA
           if (_searchResults.isNotEmpty)
             Expanded(
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 16.0),
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        const Text('Resultados Encontrados:', style: TextStyle(fontWeight: FontWeight.bold)),
-                        TextButton(
-                          onPressed: () => setState(() => _searchResults.clear()),
-                          child: const Text('Limpar'),
+                        Text(
+                          _isArtistSearch ? "Músicas do Artista:" : "Resultados:",
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
+                        Row(
+                          children: [
+                            TextButton.icon(
+                              icon: Icon(_sortSearchAlpha ? Icons.sort_by_alpha : Icons.local_fire_department, size: 18),
+                              label: Text(_sortSearchAlpha ? "A - Z" : (_isArtistSearch ? "Mais Conhecidas" : "Relevância")),
+                              onPressed: () => setState(() => _sortSearchAlpha = !_sortSearchAlpha),
+                            ),
+                            IconButton(
+                              icon: const Icon(Icons.close, size: 20),
+                              tooltip: 'Limpar busca',
+                              onPressed: () => setState(() => _searchResults.clear()),
+                            ),
+                          ],
                         )
                       ],
                     ),
                   ),
                   Expanded(
                     child: ListView.builder(
-                      itemCount: _searchResults.length,
+                      itemCount: displayedResults.length,
                       itemBuilder: (context, index) {
-                        final song = _searchResults[index];
-                        final badgeColor = _getSourceColor(song.source);
-
+                        final song = displayedResults[index];
                         return Card(
                           margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
                           child: ListTile(
+                            leading: _isArtistSearch && !_sortSearchAlpha
+                                ? CircleAvatar(
+                                    backgroundColor: index < 3 ? Colors.deepOrange : Colors.grey.shade300,
+                                    foregroundColor: index < 3 ? Colors.white : Colors.black87,
+                                    child: Text("#${song.popularityRank}", style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                                  )
+                                : const Icon(Icons.music_note, color: Colors.deepOrange),
                             title: Text(song.title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                            subtitle: Row(
-                              children: [
-                                Text(song.artist),
-                                const SizedBox(width: 8),
-                                Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                  decoration: BoxDecoration(
-                                    color: badgeColor.withAlpha(40),
-                                    borderRadius: BorderRadius.circular(4),
-                                    border: Border.all(color: badgeColor, width: 0.8),
-                                  ),
-                                  child: Text(
-                                    song.source,
-                                    style: TextStyle(color: badgeColor, fontSize: 10, fontWeight: FontWeight.bold),
-                                  ),
-                                ),
-                              ],
-                            ),
+                            subtitle: Text(song.artist),
                             trailing: const Icon(Icons.chevron_right),
                             onTap: () => _openSong(song),
                           ),
@@ -481,10 +553,12 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
               ),
             )
           else
+            // ABAS DE RECENTES E FAVORITOS
             Expanded(
               child: TabBarView(
                 controller: _tabController,
                 children: [
+                  // ABA 1: RECENTES
                   _recentSongs.isEmpty
                       ? const Center(child: Text('Nenhuma música recente.'))
                       : ListView.builder(
@@ -496,33 +570,55 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
                               child: ListTile(
                                 leading: const Icon(Icons.history, color: Colors.deepOrange),
                                 title: Text(song.title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                                subtitle: Text("${song.artist} • ${song.source}"),
+                                subtitle: Text(song.artist),
                                 trailing: const Icon(Icons.chevron_right),
                                 onTap: () => _openSong(song),
                               ),
                             );
                           },
                         ),
+
+                  // ABA 2: FAVORITOS COM OPÇÃO A-Z
                   _favoriteSongs.isEmpty
                       ? const Center(child: Text('Nenhuma cifra salva em favoritos.'))
-                      : ListView.builder(
-                          itemCount: _favoriteSongs.length,
-                          itemBuilder: (context, index) {
-                            final song = _favoriteSongs[index];
-                            return Card(
-                              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-                              child: ListTile(
-                                leading: const Icon(Icons.star, color: Colors.amber),
-                                title: Text(song.title, style: const TextStyle(fontWeight: FontWeight.bold)),
-                                subtitle: Text("${song.artist} • ${song.source}"),
-                                trailing: IconButton(
-                                  icon: const Icon(Icons.delete_outline, color: Colors.grey),
-                                  onPressed: () => _toggleFavorite(song),
-                                ),
-                                onTap: () => _openSong(song),
+                      : Column(
+                          children: [
+                            Padding(
+                              padding: const EdgeInsets.symmetric(horizontal: 16.0, vertical: 4),
+                              child: Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text("Total: ${_favoriteSongs.length} cifras", style: const TextStyle(fontWeight: FontWeight.bold)),
+                                  TextButton.icon(
+                                    icon: Icon(_sortFavsAlpha ? Icons.sort_by_alpha : Icons.schedule, size: 18),
+                                    label: Text(_sortFavsAlpha ? "A - Z" : "Recentes"),
+                                    onPressed: () => setState(() => _sortFavsAlpha = !_sortFavsAlpha),
+                                  ),
+                                ],
                               ),
-                            );
-                          },
+                            ),
+                            Expanded(
+                              child: ListView.builder(
+                                itemCount: displayedFavs.length,
+                                itemBuilder: (context, index) {
+                                  final song = displayedFavs[index];
+                                  return Card(
+                                    margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                    child: ListTile(
+                                      leading: const Icon(Icons.star, color: Colors.amber),
+                                      title: Text(song.title, style: const TextStyle(fontWeight: FontWeight.bold)),
+                                      subtitle: Text(song.artist),
+                                      trailing: IconButton(
+                                        icon: const Icon(Icons.delete_outline, color: Colors.grey),
+                                        onPressed: () => _toggleFavorite(song),
+                                      ),
+                                      onTap: () => _openSong(song),
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                          ],
                         ),
                 ],
               ),
@@ -533,6 +629,7 @@ class _HomePageState extends State<HomePage> with SingleTickerProviderStateMixin
   }
 }
 
+// TELA DO VISUALIZADOR DE CIFRA
 class SongViewerPage extends StatefulWidget {
   final Song song;
   final bool isFav;
@@ -623,6 +720,7 @@ class _SongViewerPageState extends State<SongViewerPage> {
   @override
   Widget build(BuildContext context) {
     final lines = widget.song.content.trim().split('\n');
+    final isDark = Theme.of(context).brightness == Brightness.dark;
 
     return Scaffold(
       appBar: AppBar(
@@ -640,7 +738,7 @@ class _SongViewerPageState extends State<SongViewerPage> {
         ],
       ),
       bottomNavigationBar: Container(
-        color: Colors.grey.shade200,
+        color: isDark ? const Color(0xFF1E1E1E) : Colors.grey.shade200,
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -691,7 +789,11 @@ class _SongViewerPageState extends State<SongViewerPage> {
             if (match.start > lastMatchEnd) {
               spans.add(TextSpan(
                 text: line.substring(lastMatchEnd, match.start),
-                style: const TextStyle(fontSize: 16, color: Colors.black, fontFamily: 'monospace'),
+                style: TextStyle(
+                  fontSize: 16,
+                  color: isDark ? Colors.white70 : Colors.black87,
+                  fontFamily: 'monospace',
+                ),
               ));
             }
             final chord = match.group(0)!;
@@ -704,12 +806,16 @@ class _SongViewerPageState extends State<SongViewerPage> {
                     margin: const EdgeInsets.symmetric(horizontal: 2),
                     padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                     decoration: BoxDecoration(
-                      color: Colors.deepOrange.shade100,
+                      color: isDark ? Colors.deepOrange.shade900 : Colors.deepOrange.shade100,
                       borderRadius: BorderRadius.circular(4),
                     ),
                     child: Text(
                       chord.replaceAll('[', '').replaceAll(']', ''),
-                      style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.deepOrange, fontSize: 16),
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: isDark ? Colors.orangeAccent : Colors.deepOrange,
+                        fontSize: 16,
+                      ),
                     ),
                   ),
                 ),
@@ -721,7 +827,11 @@ class _SongViewerPageState extends State<SongViewerPage> {
           if (lastMatchEnd < line.length) {
             spans.add(TextSpan(
               text: line.substring(lastMatchEnd),
-              style: const TextStyle(fontSize: 16, color: Colors.black, fontFamily: 'monospace'),
+              style: TextStyle(
+                fontSize: 16,
+                color: isDark ? Colors.white70 : Colors.black87,
+                fontFamily: 'monospace',
+              ),
             ));
           }
 
@@ -735,13 +845,14 @@ class _SongViewerPageState extends State<SongViewerPage> {
   }
 }
 
+// Pintor do Braço do Cavaquinho
 class CavacoChordPainter extends CustomPainter {
   final List<int> frets;
   CavacoChordPainter(this.frets);
 
   @override
   void paint(Canvas canvas, Size size) {
-    final linePaint = Paint()..color = Colors.black..strokeWidth = 2;
+    final linePaint = Paint()..color = Colors.grey.shade800..strokeWidth = 2;
     final nutPaint = Paint()..color = Colors.black..strokeWidth = 6;
     final dotPaint = Paint()..color = Colors.deepOrange..style = PaintingStyle.fill;
 
@@ -770,7 +881,7 @@ class CavacoChordPainter extends CustomPainter {
         final y = (fret * fretSpacing) - (fretSpacing / 2);
         canvas.drawCircle(Offset(x, y), 8, dotPaint);
       } else {
-        final openPaint = Paint()..color = Colors.black..style = PaintingStyle.stroke..strokeWidth = 2;
+        final openPaint = Paint()..color = Colors.grey.shade800..style = PaintingStyle.stroke..strokeWidth = 2;
         canvas.drawCircle(Offset(x, -8), 4, openPaint);
       }
     }
