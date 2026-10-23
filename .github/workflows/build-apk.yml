@@ -25,12 +25,13 @@ jobs:
           flutter-version: '3.22.x'
           channel: 'stable'
 
-      - name: Criar arquivos do projeto Android
+      - name: Gerar estrutura Android com nome valido
         run: |
-          cp pubspec.yaml pubspec.backup.yaml
-          flutter create --platforms=android --org com.cavacoapp .
-          cp pubspec.backup.yaml pubspec.yaml
+          flutter create --platforms=android --project-name cavaco_cifras --org com.cavacoapp .
           flutter pub get
+
+      - name: Aceitar licencas do Android
+        run: yes | flutter doctor --android-licenses || true
 
       - name: Compilar APK Release
         run: flutter build apk --release
