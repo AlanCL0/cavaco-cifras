@@ -1,0 +1,42 @@
+name: Gerar APK de Cavaquinho
+
+on:
+  push:
+    branches: [ "main", "master" ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Baixar código
+        uses: actions/checkout@v4
+
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Configurar Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.22.x'
+          channel: 'stable'
+
+      - name: Criar arquivos do projeto Android
+        run: |
+          cp pubspec.yaml pubspec.backup.yaml
+          flutter create --platforms=android --org com.cavacoapp .
+          cp pubspec.backup.yaml pubspec.yaml
+          flutter pub get
+
+      - name: Compilar APK Release
+        run: flutter build apk --release
+
+      - name: Salvar APK para Download
+        uses: actions/upload-artifact@v4
+        with:
+          name: CavacoCifras-Instalador
+          path: build/app/outputs/flutter-apk/app-release.apk
